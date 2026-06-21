@@ -257,7 +257,206 @@ The SSB Observer's key advantage is not just cost — it's lead time. Visual ins
 
 ---
 
-## 8. Dataset Moat
+## 8. Dynamic Analysis — Beyond Static Tilt
+
+The two-layer observer presented in sections 3-5 treats the tower as a quasi-static system: wind pushes, tower tilts, and permanent deformation accumulates. Real towers are dynamic structures with complex vibration behaviour. This section extends the observer into the frequency domain, unlocking earlier failure detection and richer diagnostics — all from the same BBU phase correction log.
+
+### 8.1 Natural Frequency Tracking
+
+Every tower has a natural frequency f_n at which it prefers to vibrate. For telecom towers:
+
+| Tower Type | f_n (1st bending mode) | Source |
+|---|---|---|
+| Lattice tower (60-100m) | 0.5 – 1.0 Hz | MDPI Infrastructures |
+| Steel monopole (20-40m) | 1.2 – 2.0 Hz | ProQuest damping studies |
+| Guyed mast | 0.2 – 0.5 Hz | Industry practice |
+
+**The insight:** As a tower loses stiffness — from corrosion, loosening bolts, foundation settlement, or fatigue cracking — its natural frequency **decreases**. A 10% drop in f_n corresponds to a ~19% loss in stiffness (since f_n ∝ √(k/m) for a simple oscillator).
+
+**Implementation:** Compute a sliding FFT on the phase correction signal Δθ over a 60-second window:
+
+```python
+import numpy as np
+
+def track_natural_frequency(phase_series, sample_rate_hz=0.1):
+    """Extract dominant frequency from BBU phase corrections."""
+    window = int(60 * sample_rate_hz)  # 60-second window
+    freqs = np.fft.rfftfreq(window, d=1/sample_rate_hz)
+    psd = np.abs(np.fft.rfft(phase_series[-window:]))**2
+    dominant = freqs[np.argmax(psd[1:]) + 1]  # skip DC
+    return dominant, psd, freqs
+```
+
+**Output:** A time series of f_n. An alert triggers when f_n drops below a per-tower baseline by a configurable threshold (e.g., 5% drop → inspect, 10% → warn, 15% → critical).
+
+**Why this is better than static tilt alone:** A tower can lose 20% of its stiffness and still be perfectly straight. Static tilt only catches deformation *after* it happens. Natural frequency tracking catches stiffness loss *as it happens*.
+
+### 8.2 Damping Ratio Estimation
+
+Damping ratio ζ controls how quickly a tower stops vibrating after a wind gust. Healthy values:
+
+| Tower Type | ζ (damping ratio) |
+|---|---|
+| Lattice tower | 0.005 – 0.02 (0.5% – 2%) |
+| Monopole | 0.01 – 0.03 (1% – 3%) |
+| Damaged structure | Changes by ±30% or more from baseline |
+
+**The insight:** Joint loosening increases damping (more friction), while fatigue cracking decreases it (less energy dissipation). A damping change in either direction is diagnostic.
+
+**Implementation:** After identifying a gust event (rapid wind increase followed by decrease), fit an exponential decay to the post-gust phase correction:
+
+```
+Δθ_post(t) = A · exp(-ζ · ω_n · t) · sin(ω_d · t + φ)
+```
+
+Where:
+- ω_n = 2πf_n (natural angular frequency)
+- ω_d = ω_n · √(1 − ζ²) (damped natural frequency)
+- ζ is the unknown we solve for
+
+Fit via least-squares over a 30-second post-gust window:
+
+```python
+from scipy.optimize import curve_fit
+
+def damped_sine(t, A, zeta, phi):
+    omega_n = 2 * np.pi * natural_frequency
+    omega_d = omega_n * np.sqrt(1 - zeta**2)
+    return A * np.exp(-zeta * omega_n * t) * np.sin(omega_d * t + phi)
+
+def estimate_damping(timestamps, phase_values, natural_frequency):
+    popt, _ = curve_fit(damped_sine, timestamps, phase_values,
+                        p0=[max(phase_values), 0.01, 0])
+    return popt[1]  # zeta
+```
+
+### 8.3 Fatigue Cycle Counting (Miner's Rule)
+
+Every phase correction cycle imposes a stress cycle on the tower structure. Over years, these cycles accumulate fatigue damage even if the tower never visibly deforms.
+
+Miner's cumulative damage rule:
+
+```
+D = Σ (n_i / N_i)
+```
+
+Where D = 1.0 predicts failure. The number of cycles to failure N_i at a given stress amplitude S_i is given by the tower's S-N curve (Wöhler curve):
+
+```
+N_i = C / S_i^m
+```
+
+Where C and m are material constants (for structural steel, m ≈ 3-5).
+
+**Implementation:** Apply rainflow counting to the phase correction signal to extract cycle amplitudes, then accumulate damage:
+
+```python
+def rainflow_count(series):
+    """Extract cycle amplitudes from a time series using rainflow counting."""
+    # Standard ASTM E1049 rainflow algorithm
+    # Returns list of (amplitude, mean) for each half-cycle
+    ...
+
+def accumulate_fatigue(phase_series, C=1e12, m=4):
+    cycles = rainflow_count(phase_series)
+    D = sum(amp**m / C for amp, _ in cycles)
+    return D
+```
+
+**Output:** A fatigue damage scalar D, ranging from 0 (new tower) toward 1 (end of life). Independent of static tilt.
+
+### 8.4 Modal Decomposition (Multi-Panel Towers)
+
+Towers with multiple BBU antenna panels (e.g., 3 sectors at 120°) can separate bending from torsion — a distinction impossible with a single panel.
+
+If panels A, B, and C are at 0°, 120°, and 240° around the tower:
+
+| Motion | Panel A | Panel B | Panel C |
+|---|---|---|---|
+| Bending (N-S) | +Δθ | −0.5Δθ | −0.5Δθ |
+| Bending (E-W) | 0 | +0.87Δθ | −0.87Δθ |
+| Torsion (twist) | +Δθ | +Δθ | +Δθ |
+
+**Implementation:** Project the three panel phase corrections onto the mode shapes:
+
+```python
+def decompose_motions(theta_a, theta_b, theta_c):
+    """Separate tower motion into bending and torsion components."""
+    # Assumes panels at 0°, 120°, 240°
+    bend_ns = (2*theta_a - theta_b - theta_c) / 3
+    bend_ew = (theta_b - theta_c) / np.sqrt(3)
+    torsion = (theta_a + theta_b + theta_c) / 3
+    return bend_ns, bend_ew, torsion
+```
+
+**Why this matters:** A tower experiencing foundation settlement shows mostly bending (one side sinks). A tower experiencing bolted joint failure at a guy wire connection shows torsion (asymmetric loading). Separating them tells you *what kind* of damage, not just that damage exists.
+
+### 8.5 Vortex Shedding Detection
+
+Wind passing a cylindrical tower creates periodic vortices at the shedding frequency f_s:
+
+```
+f_s = St · V / D
+```
+
+Where:
+- St = Strouhal number (~0.2 for circular cylinders)
+- V = wind speed (m/s)
+- D = tower diameter (m)
+
+For a 1m-diameter monopole in 10 m/s wind: f_s = 0.2 × 10 / 1 = 2.0 Hz.
+
+**Danger:** If f_s matches the tower's natural frequency f_n, **lock-in** occurs — sustained resonance that can cause catastrophic fatigue failure in hours.
+
+**Implementation:** The agent server already receives wind speed. Compute the shedding frequency in real-time and compare to the tracked natural frequency:
+
+```python
+def vortex_danger(wind_speed, tower_diameter, natural_freq, threshold=0.1):
+    shedding_freq = 0.2 * wind_speed / tower_diameter
+    proximity = abs(shedding_freq - natural_freq) / natural_freq
+    return {
+        'shedding_freq': shedding_freq,
+        'natural_freq': natural_freq,
+        'proximity': proximity,
+        'danger': proximity < threshold,
+    }
+```
+
+**Alert:** When proximity < 0.1 (10%), issue a vortex shedding warning — even if the tower is perfectly straight.
+
+### 8.6 Unified Health Dashboard
+
+Combining all metrics yields a multi-dimensional health vector:
+
+```
+H(t) = [δ_plastic, f_n, Δf_n, ζ, D_vortex, D_fatigue]
+```
+
+| Metric | Symbol | Early Warning | Late Warning | Critical |
+|---|---|---|---|---|
+| Static tilt debt | δ_plastic | < 1.0° | 1.0 – 2.0° | > 2.0° |
+| Natural frequency shift | Δf_n | < 5% drop | 5–10% drop | > 10% drop |
+| Damping change | Δζ | < 20% change | 20–50% change | > 50% change |
+| Fatigue damage | D | < 0.3 | 0.3 – 0.7 | > 0.7 |
+| Vortex shedding proximity | p | > 0.2 | 0.1 – 0.2 | < 0.1 |
+
+A tower with δ_plastic = 0.3 (healthy tilt) but Δf_n = 12% (critical stiffness loss) would be flagged for immediate inspection — invisible to static methods alone.
+
+---
+
+## 9. Limitations (Addendum to Section 7)
+
+Additional limitations for the dynamic analysis methods described in Section 8:
+
+1. **Frequency resolution.** A 60-second FFT window at 0.1 Hz sampling gives ~0.017 Hz frequency resolution — sufficient for 0.5-2 Hz natural frequencies but marginal for subtle shifts. Longer windows improve resolution but reduce responsiveness.
+
+2. **Damping estimation requires clean gust events.** The exponential decay fit only works when there's a clear wind impulse followed by calm. Towers in persistently windy environments may yield few usable events.
+
+3. **Modal decomposition requires multi-panel data.** Most towers outside urban areas have only 1-3 panels. Three is the minimum for full bending/torsion separation.
+
+4. **Fatigue S-N curves are tower-specific.** The parameters C and m depend on steel grade, weld quality, joint type, and age. Generic values give approximate results.
+
+5. **Vortex shedding model assumes cylindrical cross-section.** Lattice towers have complex aerodynamics. The Strouhal number varies with member geometry and solidity ratio.
 
 This method generates a defensible data asset over time. The dataset moat has five layers:
 
@@ -271,7 +470,7 @@ Each successive layer is harder to replicate and multiplies the value of the pre
 
 ---
 
-## 9. IP and Prior Art
+## 10. IP and Prior Art
 
 This whitepaper's conception document is timestamped on Bitcoin Testnet:
 
@@ -284,12 +483,14 @@ These timestamps constitute verifiable prior art under the Bit Protocol standard
 
 ---
 
-## 10. Future Work
+## 11. Future Work
 
 - **Real tower validation:** Partnership with a tower operator or telecom to access actual BBU logs alongside known maintenance events
 - **Kalman filter formulation:** Replace the LPF with a Kalman filter for dynamic state estimation and uncertainty quantification
+- **Full dynamic observer implementation:** Implement the spectral analysis, damping estimation, rainflow fatigue counting, and modal decomposition described in Section 8 as a Python module
 - **Multi-tower correlation:** Detect regional gust fronts and foundation settlement patterns from correlated phase shifts across adjacent towers
-- **ML deformation forecasting:** Train a predictor (LSTM or Transformer) on accumulated δ_plastic time series to forecast when a tower will hit the critical threshold
+- **ML deformation forecasting:** Train a predictor (LSTM or Transformer) on the full health vector H(t) to forecast when a tower will hit any critical threshold
+- **Vortex shedding real-time alert:** Implement the Strouhal-based vortex shedding danger calculation alongside the existing debt observer
 - **Edge deployment:** Port the observer to ARM (Raspberry Pi) for tower-side processing with cellular backhaul for alerts only
 
 ---
