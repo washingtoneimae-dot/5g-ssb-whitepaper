@@ -84,6 +84,57 @@ A typical 5G macro cell site costs **$85K–$290K** to build. The SSB Observer u
 
 **$13K–35K of installed, powered, maintained equipment per site already does exactly what we need.** The operator has already sunk that CAPEX. Every BBU already logs every phase correction. We just read a log.
 
+### How the Data Pipeline Works (Teaser)
+
+The entire monitoring chain uses infrastructure the operator already runs — nothing new to install, configure, or maintain.
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  TOWER — already happening, every 10-100ms                  │
+│                                                             │
+│  1. AAU beamforms SSB signal using 64-element array         │
+│  2. Phase shifters adjust each element individually         │
+│  3. BBU records phase correction angle per beam             │
+│  4. BBU exposes this as a standard PM (Performance          │
+│     Measurement) counter                                    │
+│                                                             │
+│  Vendor counter examples (actual OSS metric names):         │
+│    Nokia:  "BeamPhaseOffset" in gNB PM XML feed             │
+│    Ericsson: "pmRadioPhsClb" in ENM performance export      │
+│    Huawei:  "gNBDUBeamPhsOffset" in iMaster MAE             │
+│                                                             │
+│  Granularity: 0.01-0.1° per sample                          │
+│  Frequency:   Every 10-100ms (100-1,000 samples/second)     │
+└──────────────────────┬──────────────────────────────────────┘
+                       │ SNMP / OSS API / syslog
+                       ▼
+┌─────────────────────────────────────────────────────────────┐
+│  OSS (Operations Support System) — already running          │
+│                                                             │
+│  • NetAct (Nokia) / ENM (Ericsson) / iMaster MAE (Huawei)  │
+│  • Aggregates PM counters from all towers in the network    │
+│  • Exports as CSV, XML, or streaming API                    │
+│  • Already polling this data for RF KPIs                    │
+│                                                             │
+│  We add ONE parsing step:                                   │
+│    Extract "BeamPhaseOffset" column → feed to observer      │
+└──────────────────────┬──────────────────────────────────────┘
+                       │ CSV / API
+                       ▼
+┌─────────────────────────────────────────────────────────────┐
+│  SSB OBSERVER — the only new component                      │
+│                                                             │
+│  Input:  2 columns (phase correction + wind speed)          │
+│  Output: 15-metric health vector, alert level               │
+│  Runs on: Standard server, Raspberry Pi, or cloud VM        │
+│  Cost:   $0 in additional hardware or licensing             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**The only integration work required from the operator:** grant read-access to one PM counter they already collect. That's a configuration change, not a hardware deployment.
+
+For operators without OSS export capability, the observer can ingest raw SNMP walk output directly from the BBU — no intermediate system required.
+
 ---
 
 ### Competitive Moat
