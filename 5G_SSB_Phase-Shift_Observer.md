@@ -719,7 +719,7 @@ These timestamps constitute verifiable prior art under the Bit Protocol standard
 ## 11. Future Work
 
 - **Real tower validation:** Partnership with a tower operator or telecom to access actual BBU logs alongside known maintenance events
-- **Kalman filter formulation:** Replace the LPF with a Kalman filter for dynamic state estimation and uncertainty quantification
+- **Kalman filter formulation:** Replace the LPF with a Kalman filter for dynamic state estimation and uncertainty quantification. The Kalman filter requires two parameters estimated from real BBU data: process noise covariance Q (how unpredictable the wind-tower response is) and measurement noise covariance R (BBU vendor-specific phase correction noise). Without real tower data, these cannot be calibrated — generic values would produce results indistinguishable from the LPF. Implementation priority: once real BBU logs are available, Q and R are estimated from calm-period data, then the Kalman filter replaces the LPF in a single weekend of work. Until then, the LPF remains the production observer's elastic state estimator.
 - **Full dynamic observer implementation:** Implement the spectral analysis, damping estimation, rainflow fatigue counting, and modal decomposition described in Section 8 as a Python module
 - **Multi-tower correlation:** Detect regional gust fronts and foundation settlement patterns from correlated phase shifts across adjacent towers
 - **ML deformation forecasting:** Train a predictor (LSTM or Transformer) on the full health vector H(t) to forecast when a tower will hit any critical threshold
