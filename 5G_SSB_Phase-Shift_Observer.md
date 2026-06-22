@@ -442,6 +442,108 @@ H(t) = [δ_plastic, f_n, Δf_n, ζ, D_vortex, D_fatigue]
 
 A tower with δ_plastic = 0.3 (healthy tilt) but Δf_n = 12% (critical stiffness loss) would be flagged for immediate inspection — invisible to static methods alone.
 
+### 8.7 FFT-Based Statistical Health Indicators
+
+The power spectral density (PSD) from the sliding FFT contains diagnostic information beyond just the dominant frequency peak. We extract four additional features from the spectrum to detect subtle damage signatures.
+
+#### Harmonics Ratio (Crack Detection)
+
+When a structure develops cracks, the vibration becomes nonlinear — the crack opens and closes during each cycle, creating frequency components at integer multiples of the fundamental (2×f_n, 3×f_n, etc.). The harmonics ratio quantifies this:
+
+```
+HR = PSD(2 × f_n) / PSD(f_n)
+```
+
+Where PSD(f_n) is the power at the dominant frequency and PSD(2×f_n) is the power at exactly double that frequency.
+
+**Interpretation:**
+| HR | Status | Action |
+|---|---|---|
+| < 0.1 | Normal | No cracks detected |
+| 0.1 – 0.2 | Borderline | Monitor — possible micro-crack initiation |
+| > 0.2 | Crack-like | Schedule inspection — crack-induced nonlinearity |
+
+**Why this is earlier than frequency shift:** A crack generates harmonics *before* the overall stiffness drops enough to shift f_n. Harmonics ratio is the earliest crack detection signal available from a single sensor.
+
+#### Spectral Flatness (Chaos Detection)
+
+Spectral flatness measures how evenly energy is distributed across the frequency spectrum:
+
+```
+SF = (∏ PSD_i)^(1/N) / (Σ PSD_i / N)
+```
+
+A healthy tower vibrating at its natural frequency has a sharp spectral peak → SF ≈ 0 (tonal).
+A damaged tower with loose bolts, cracked joints, and chaotic vibration has energy everywhere → SF ≈ 1 (noisy).
+
+**Interpretation:**
+| SF | Status | Action |
+|---|---|---|
+| < 0.3 | Tonal | Healthy — clean resonant vibration |
+| 0.3 – 0.5 | Mixed | Borderline — increasing noise floor |
+| > 0.5 | Noisy | Chaotic vibration — likely structural damage |
+
+#### Kurtosis (Impulsiveness)
+
+Kurtosis of the detrended phase signal detects intermittent impact events:
+
+```
+Ku = E[(x − μ)⁴] / (E[(x − μ)²])²
+```
+
+A Gaussian distribution has Ku = 3. Impact events (loose joints slamming, crack faces colliding) produce impulsive spikes that raise kurtosis above 3. A pure sinusoidal vibration (locked-in resonance) has Ku < 3.
+
+**Interpretation:**
+| Ku | Status |
+|---|---|
+| < 2.5 | Sinusoidal — probable resonance lock-in |
+| 2.5 – 3.5 | Normal — Gaussian random vibration |
+| > 3.5 | Impulsive — loose joints or impact events |
+
+#### AR(1) Coefficient (Short-Term Memory)
+
+The first-order autoregressive coefficient φ₁ measures how predictable the vibration is from the previous sample:
+
+```
+x_t = φ₁ × x_{t−1} + ε_t
+```
+
+A tower oscillating at its natural frequency has φ₁ ≈ 1 (highly predictable — periodic). A tower with chaotic vibration from damage has φ₁ → 0 (random — unpredictable).
+
+**Interpretation:**
+| φ₁ | Status |
+|---|---|
+| > 0.8 | Periodic — healthy oscillation |
+| 0.4 – 0.8 | Mixed — some damage, still periodic |
+| < 0.4 | Chaotic — severe damage, random vibration |
+
+#### Updated Health Vector
+
+The complete 15-metric health vector H(t) now includes:
+
+```
+H(t) = [δ_plastic, θ_elastic, f_n, Δf_n, ζ, D_fatigue, p_vortex,
+        RMS, Ku, SC, SS, φ₁, HR, SF, excess]
+```
+
+| Category | Metric | Symbol | Detects |
+|---|---|---|---|
+| Static | Tilt debt | δ_plastic | Permanent lean |
+| Static | Elastic sway | θ_elastic | Current wind response |
+| Frequency | Natural frequency | f_n | Stiffness change |
+| Frequency | Frequency shift | Δf_n | Stiffness loss from baseline |
+| Modal | Damping ratio | ζ | Joint integrity |
+| Fatigue | Cumulative damage | D | Cycle-accumulated fatigue |
+| Aerodynamic | Vortex proximity | p_vortex | Lock-in resonance danger |
+| Statistical | RMS amplitude | RMS | Vibration intensity |
+| Statistical | Kurtosis | Ku | Impulsive events |
+| Time-frequency | Spectral centroid | SC | Frequency content shift |
+| Time-frequency | Spectral spread | SS | Multi-modal excitation |
+| Time-series | AR(1) coefficient | φ₁ | Predictability / chaos |
+| FFT | Harmonics ratio | HR | Crack-induced nonlinearity |
+| FFT | Spectral flatness | SF | Chaotic vibration |
+| Diagnostic | Excess | — | Raw residual before gate |
+
 ---
 
 ## 9. Limitations (Addendum to Section 7)
@@ -457,6 +559,8 @@ Additional limitations for the dynamic analysis methods described in Section 8:
 4. **Fatigue S-N curves are tower-specific.** The parameters C and m depend on steel grade, weld quality, joint type, and age. Generic values give approximate results.
 
 5. **Vortex shedding model assumes cylindrical cross-section.** Lattice towers have complex aerodynamics. The Strouhal number varies with member geometry and solidity ratio.
+
+6. **Frequency detection requires adequate sampling.** The Nyquist-Shannon theorem requires sampling at ≥ 2× the highest frequency of interest. For tower natural frequencies in the 0.5–2.0 Hz range, a minimum sampling rate of 4 Hz (250 ms intervals) is needed. The 10-second simulation interval (0.1 Hz) used for multi-month weather generation is insufficient for frequency-domain analysis. Real BBU phase correction logs are typically sampled at 10–100 ms, well within the required range.
 
 This method generates a defensible data asset over time. The dataset moat has five layers:
 
