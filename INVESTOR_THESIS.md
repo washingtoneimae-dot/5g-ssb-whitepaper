@@ -42,11 +42,12 @@ Every 5G tower already generates the data needed for structural health monitorin
 
 ### Competitive Moat
 
-1. **Zero hardware cost.** Competitors sell sensors. We use existing data. Unbeatable on cost.
-2. **Data asset defensibility.** Per-tower calibration takes months. Once calibrated for a network, switching costs are high.
-3. **Bitcoin-timestamped prior art.** Core method is publicly timestamped on blockchain. No competitor can patent-block us.
-4. **Multi-metric detection.** 15 health indicators from one data stream. Competitors offer 1-3 metrics.
-5. **First-mover advantage.** Using SSB phase corrections as a structural sensor is a novel technique.
+1. **Zero hardware cost.** Competitors sell sensors. We use existing data — BBU phase corrections are already logged by every 5G base station as a standard RF beamforming metric. Wind data comes from tower anemometers (already installed) or free weather APIs. No sensors to buy, install, maintain, or power. Unbeatable on cost.
+2. **Zero infrastructure change.** The data pipeline uses existing OSS/SNMP interfaces. BBU phase correction OIDs are standard across Nokia, Ericsson, and Huawei equipment. Operators already poll this data for RF performance — we extract structural information from the same stream.
+3. **Data asset defensibility.** Per-tower calibration takes months. Once calibrated for a network, switching costs are high.
+4. **Bitcoin-timestamped prior art.** Core method is publicly timestamped on blockchain. No competitor can patent-block us.
+5. **Multi-metric detection.** 15 health indicators from one data stream. Competitors offer 1-3 metrics.
+6. **First-mover advantage.** Using SSB phase corrections as a structural sensor is a novel technique.
 
 ---
 
