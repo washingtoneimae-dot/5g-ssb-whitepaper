@@ -546,6 +546,135 @@ H(t) = [δ_plastic, θ_elastic, f_n, Δf_n, ζ, D_fatigue, p_vortex,
 
 ---
 
+## 8.8 Complete Formula Reference
+
+Every formula in the production observer, with variable sources and calibration methods.
+
+### Static (Debt + Elastic)
+
+```
+θ_expected(t) = α × W(t)²                              [Wind pressure]
+θ_tilt(t) = (1−τ) × θ_tilt(t−1) + τ × θ_expected(t)    [LPF]
+excess(t) = Δθ(t) − θ_tilt(t) − δ_plastic(t−1)         [Excess]
+δ_plastic(t) = δ_plastic(t−1) + excess(t) × C_env      [Gate, if excess > θ_min]
+```
+
+| Symbol | Name | Unit | Source |
+|---|---|---|---|
+| α | Elastic modulus | °·s²/m² | Calm-period linear regression: Δθ vs W² |
+| W(t) | Wind speed | m/s | Tower anemometer or weather station |
+| τ | LPF time constant | — | Tuned per tower (0.05–0.3) |
+| Δθ(t) | BBU phase correction | ° | Existing BBU log (SNMP OID) |
+| θ_min | Plastic threshold | ° | Set above BBU noise floor (~0.02°) |
+| C_env | Corrosion factor | — | 1.0 desert, 1.12 Nairobi, 1.5 coastal |
+| N_warmup | Warmup samples | count | ~50 for LPF convergence |
+
+### Frequency
+
+```
+data = Δθ_buffer − polyfit(Δθ_buffer, order=1)          [Detrend]
+PSD(f) = |FFT(data × Hanning)|²                         [Spectrum]
+f_n = argmax(PSD)  (skip DC)                            [Natural freq]
+Δf_n(%) = max(0, (f_baseline − f_n) / f_baseline) × 100  [Freq shift]
+```
+
+| Symbol | Name | Unit | Source |
+|---|---|---|---|
+| Δθ_buffer | Rolling window | ° | Last 600 samples of raw phase data |
+| f_baseline | Baseline frequency | Hz | Measured during first calibration month |
+| f_n | Natural frequency | Hz | FFT dominant peak |
+
+### Damping
+
+```
+θ(t) = A × exp(−ζ·ω_n·t) × sin(ω_d·t + φ) + offset
+ω_n = 2π·f_n,  ω_d = ω_n·√(1−ζ²)
+ζ solved via scipy.curve_fit on post-gust decay window
+```
+
+| Symbol | Name | Unit | Source |
+|---|---|---|---|
+| A | Initial amplitude | ° | Post-gust peak phase correction |
+| ζ | Damping ratio | — | Least-squares fit output |
+| ω_n | Natural angular freq | rad/s | From f_n |
+| gust trigger | Wind spike | — | W(t) > 1.5×W(t−1) AND W(t) > 3 m/s |
+
+### Fatigue (Miner's Rule)
+
+```
+amplitude = |peak − valley| / 2        [Rainflow reversal]
+N_f = C / amplitude^m                  [S-N curve]
+D += 1 / N_f                           [Accumulate]
+```
+
+| Symbol | Name | Value | Source |
+|---|---|---|---|
+| C | S-N constant | 1×10¹² | Generic structural steel |
+| m | S-N exponent | 4 | Generic structural steel |
+| D | Fatigue damage | 0→1 | Observer accumulator |
+
+### Vortex Shedding
+
+```
+f_shedding = St × W(t) / D_tower
+proximity = |f_shedding − f_n| / f_n
+p_vortex = max(0, 1 − (proximity − 0.05)/0.15)
+```
+
+| Symbol | Name | Value | Source |
+|---|---|---|---|
+| St | Strouhal number | 0.2 | Circular cylinder (fluid dynamics) |
+| D_tower | Tower diameter | m | Tower spec sheet or measurement |
+| p_vortex | Proximity score | 0→1 | 0=safe, 1=lock-in |
+
+### Statistical / FFT Features
+
+```
+RMS    = √(mean(Δθ_residual²))                           [Intensity]
+Ku     = E[(x−μ)⁴] / (E[(x−μ)²])²                        [Impulsiveness]
+SC     = Σ(f·PSD(f)) / Σ(PSD(f))                          [Centroid]
+SS     = √(Σ((f−SC)²·PSD(f)) / Σ(PSD(f)))                 [Spread]
+φ₁     = cov(x_t, x_{t−1}) / var(x_{t−1})                 [AR(1)]
+HR     = PSD(2·f_n) / PSD(f_n)                             [Harmonics]
+SF     = (∏PSD)^{1/N} / (ΣPSD/N)                           [Flatness]
+```
+
+| Symbol | Name | Range | What It Detects |
+|---|---|---|---|
+| RMS | Root mean square | >0° | Vibration intensity |
+| Ku | Kurtosis | ~3 normal | >3.5 impulsive (loose joints) |
+| SC | Spectral centroid | Hz | Stiffness change |
+| SS | Spectral spread | Hz | Multi-modal damage |
+| φ₁ | AR(1) coefficient | 0–1 | Chaos (>0.8 periodic) |
+| HR | Harmonics ratio | 0–1 | Crack nonlinearity (>0.2) |
+| SF | Spectral flatness | 0–1 | Chaotic vibration (>0.5) |
+
+All statistical/FFT features use the detrended residual buffer: `Δθ_residual = Δθ − δ_plastic`.
+
+### Data Flow
+
+```
+BBU Phase Log (Δθ) ──┐
+                      ├──► SSB Observer Pro ──► H(t) [15 metrics] ──► Alert
+Wind Speed (W)     ──┘
+```
+
+**Two real-time inputs. Fifteen outputs. One formula chain.**
+
+### Sampling Requirements
+
+| Feature Set | Minimum Sampling | Nyquist Limit | Suitable For |
+|---|---|---|---|
+| Static (δ_plastic, θ_tilt) | Any rate | None | All tower types |
+| Frequency (f_n, SC, SS, SF, HR) | >4 Hz | 2 Hz | Monopole (1.5 Hz) |
+| Frequency (f_n, SC, SS, SF, HR) | >2 Hz | 1 Hz | Lattice (0.8 Hz) |
+| Damping (ζ) | >2 Hz | — | Post-gust decay fitting |
+| Fatigue (D) | >1 Hz | — | Cycle amplitude detection |
+
+The production default of 1 second sampling (1 Hz) resolves tower dynamics up to 0.5 Hz (suitable for lattice towers). Real BBU phase correction data is typically logged at 10–100 millisecond intervals (10–100 Hz), exceeding all requirements.
+
+---
+
 ## 9. Limitations (Addendum to Section 7)
 
 Additional limitations for the dynamic analysis methods described in Section 8:
