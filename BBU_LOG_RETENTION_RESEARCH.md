@@ -206,45 +206,87 @@ There are **two tiers of data** with very different resolution:
 
 **Conclusion:** The whitepaper's core data assumption — that the BBU's internal phase correction (Δθ) is accessible at 10-100ms resolution — is **not supported by available vendor documentation**. The data exists inside the AAU's DSP but is not surfaced through any standard export mechanism.
 
-**For the SSB Observer to work, one of these would be needed:**
-- Vendor firmware update to expose beamforming weights as a PM counter or OID
-- External RF phase measurement equipment per tower (defeats zero-hardware)
-- Alternative approach using UE-reported L1-RSRP per beam (available, but measures signal strength, not phase/angle)
+### 2.5.2 Theoretical Extraction Methods
 
-### 2.6 Data Flow Diagram (Revised)
+The phase shift values are physically real — they exist in the AAU's DSP/FPGA because beamforming requires them. Extraction methods range from impractical to production-viable:
+
+| Method | Where | How | Practical? |
+|---|---|---|---|
+| **DSP debug port** (JTAG/SWD) | AAU processor registers | Physical access to AAU, vendor debug tools, halts operation | ❌ Crashes AAU, needs tower climb |
+| **CPRI/eCPRI tap** | Fronthaul fiber between RRU and BBU | Optical tap + capture hardware (VIAVI, R&S) | ❌ $10K-$50K per site, defeats zero-hardware |
+| **Over-the-air SDR** | RF from antenna | USRP/BladeRF captures DL signal, reverse-engineer beam weights | ❌ Per-tower hardware, complex DSP |
+| **O-RAN interface** (future) | O-RU <-> O-DU | Standardized CUS/M-plane, could expose beam weights | ⏳ If operator deploys O-RAN equipment |
+| **UE L1-RSRP per beam** | Existing gNB: UE measurement reports | gNB already collects this from every UE. RSRP distribution shifts when tower tilts | ✅ **Most viable — uses existing data, zero additional hardware** |
+
+### 2.5.3 Practical Alternative: UE-Reported L1-RSRP per SSB Beam
+
+This is the most promising path that keeps the zero-hardware claim intact:
+
+**How it works:**
+- Every gNB already configures UEs to measure and report L1-RSRP per SSB beam index (RRC measurement reports, MAC CE)
+- The gNB maintains a running view of RSRP distribution across its beams
+- When a tower tilts, the beam pattern shifts — UEs in certain directions see weaker RSRP on some beams and stronger on others
+- The shift in RSRP distribution across beams over time is detectable without any new data collection
+
+**What exists in 3GPP:**
+- TS 38.331 clause 5.5.5 — UE measurement report contains `resultsSSB-Indexes` with per-beam L1-RSRP
+- TS 38.321 clause 6.1.3.84 — MAC CE for event-triggered L1 beam reports includes SSBRI + RSRP per beam
+- UEs report up to `maxNrofRS-IndexesToReport` beams (configurable, typically 4-8)
+- Reporting interval configurable down to 120ms (`reportInterval: ms120` in RRC)
+
+**Open question for pilot testing:**
+Does RSRP-per-beam distribution correlate sufficiently with sub-degree structural tilt? The theory is sound — beam pattern changes when the tower moves — but the sensitivity needs field validation. If successful, this approach:
+- Uses **existing data** already collected by every gNB
+- Requires **zero new hardware** or vendor firmware changes
+- Provides **sub-second sampling** via UE measurement reports
+- Costs **nothing additional** per tower
+
+### 2.6 Data Flow Diagram (Revised — Pragmatic Path)
 
 ```
-BBU/AAU (every 10-100ms)
-  │ Internal phase lock loop logs Δθ
+UEs (every 120ms-500ms)
+  │ Measure L1-RSRP per SSB beam index
+  │ Report via RRC or MAC CE (TS 38.331 / TS 38.321)
   │
-  ├──► SNMP OID (real-time phase correction values)
+  ├──► gNB internal beam scheduler
+  │     Maintains RSRP-per-beam distribution per UE
   │
   └──► OSS (NetAct / ENM / iMaster MAE)
-        │ Collects PM counters including beam metrics
-        │ Aggregates into 15-min ROP XML files
-        │ Retains per regulatory requirements (6mo-2yr+)
-        │ Exports as XML, CSV, or streaming API
+        │ PM counters: beam switches, UE per beam (15-min aggregates)
+        │ Trace/MDT: per-UE beam RSRP reports
         │
         ▼
      SSB Observer
-        │ Reads: raw Δθ via SNMP OID (real-time)
-        │   OR: phase correction column from OSS export (batch)
-        └──► 15-metric health vector H(t)
+        │ Reads: UE-reported RSRP per SSB beam index
+        │   (from OSS trace export or gNB streaming API)
+        │ Detects: RSRP distribution shift → inferred tilt
+        └──► Health metrics (limited vs. original 15)
+
+AAU (internal, not directly accessible)
+  ┌─────────────────────────────────────┐
+  │ Phase lock loop (Δθ at 10-100ms)    │  ← exists but NO export path
+  │ Beamforming weight computation       │
+  │ Could be extracted via:              │
+  │   • CPRI/eCPRI tap (costly)         │
+  │   • DSP debug port (destructive)     │
+  │   • O-RAN CUS/M-plane (future)      │
+  └─────────────────────────────────────┘
 ```
 
 ---
 
 ## Part 3: Key Implications for SSB Observer
 
-1. **Standard PM data is available but wrong granularity** — operators legally collect 15-min aggregated counters (beam switches, UE counts, SINR). These are **too coarse** for the observer's frequency-domain analysis (natural frequency tracking, damping, vortex shedding).
+1. **Standard PM data is available but wrong granularity** — operators legally collect 15-min aggregated counters (beam switches, UE counts, SINR). These are **too coarse** for the observer's frequency-domain analysis.
 
-2. **Raw Δθ may not exist as accessible data** — extensive vendor research found **no evidence** that any BBU vendor exposes raw beamforming phase correction values at 10-100ms resolution through any standard interface (SNMP, PM XML, REST API). The whitepaper's core data assumption is unverified.
+2. **Raw Δθ may not exist as accessible data** — extensive vendor research found **no evidence** that any BBU vendor exposes raw beamforming phase correction values at 10-100ms through any standard interface. The phase shifts exist in AAU silicon but are not surfaced.
 
-3. **UE-reported beam metrics are the closest available signal** — L1-RSRP per SSB beam index is real data that operators already collect. It measures signal strength per beam direction, not phase correction. Whether RSRP-per-beam correlates sufficiently with structural tilt is an open question requiring field validation.
+3. **UE-reported L1-RSRP per beam is the most viable alternative** — already collected, no new hardware, sub-second reporting. The observer would need to be rewritten to infer tilt from RSRP distribution shifts rather than from direct phase correction. This is a testable hypothesis.
 
-4. **The zero-hardware claim is at risk** — without accessible Δθ data, the observer may require:
-   - Vendor firmware changes (not zero-hardware, requires vendor partnership)
-   - External RF measurement equipment (defeats the purpose)
-   - A different algorithmic approach using existing UE RSRP reports
+4. **Theoretical extraction is possible but impractical for production:**
+   - CPRI/eCPRI optical tap: $10K-$50K per site
+   - DSP JTAG: crashes the AAU
+   - O-RAN fronthaul: requires operator to deploy O-RAN equipment, not yet widespread
+   - Over-the-air SDR: per-tower hardware, defeats zero-hardware
 
-5. **The pilot's primary goal must change** — instead of "validate the observer against real Δθ data", the first pilot should be: **"determine what data the BBU actually exposes and whether any of it correlates with structural tilt."**
+5. **The pilot's primary goal must change** — instead of "validate the observer against real Δθ data", the first pilot should be: **"collect UE-reported RSRP-per-beam data alongside known tower maintenance events, and test whether RSRP distribution shifts correlate with structural tilt."**
