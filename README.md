@@ -29,13 +29,14 @@ anticipated by:
 - Microsoft/Lumenisity — granted patent US12517303B2 (priority 2018)
 
 This repo provides the **cleanest public derivation** of the MMI physics, a
-full tolerance analysis, Monte Carlo simulation, and cost model — released as
-open source.
+full tolerance analysis, Monte Carlo simulation, cost model, and a **patent
+design-around strategy** — released as open source.
 
 ### Files
 
 - [`HCF_ADAPTER_PHYSICS.md`](HCF_ADAPTER_PHYSICS.md) — Full physics derivation
 - [`HCF_ADAPTER_HYPOTHESIS.md`](HCF_ADAPTER_HYPOTHESIS.md) — Hypothesis statement
+- [`PATENT_DESIGN_AROUND_STRATEGY.md`](PATENT_DESIGN_AROUND_STRATEGY.md) — Four strategies to work around US12517303B2
 - [`simulate_adapter.py`](simulate_adapter.py) — Numerical eigenvalue solver
 - [`fast_sweeps.py`](fast_sweeps.py) — Vectorized analytic sweeps + MC
 - [`PRIOR_ART.md`](PRIOR_ART.md) — Prior art documentation
