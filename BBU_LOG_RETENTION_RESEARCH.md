@@ -179,7 +179,39 @@ There are **two tiers of data** with very different resolution:
 | **OSS CLI** | AMOS (Ericsson), MML (Huawei) | Ad-hoc queries |
 | **Syslog** | Streaming from BBU | Real-time alerting |
 
-### 2.6 Data Flow Diagram
+### 2.5.1 Reality Check — Raw Phase Correction Data May Not Be Exposed
+
+**Critical finding from vendor capability research:** There is no public evidence that Nokia AirScale, Ericsson RAN Compute, or Huawei gNBs expose **raw beamforming phase correction values (Δθ)** through any standard interface.
+
+| What the whitepaper assumes | What actually exists |
+|---|---|
+| BBU logs Δθ at 10-100ms intervals | Internal DSP parameter — computed but never logged to an exportable interface |
+| Exposed via vendor SNMP OIDs | No public documentation of OIDs for raw beamforming weights or phase corrections |
+| Readable from standard PM logs | PM XML only contains aggregated counters (15-min ROP) like beam switch counts, UE per beam index, SS-SINR distribution |
+
+**What IS actually available from real BBUs:**
+
+1. **UE Measurement Reports (RRC/MAC CE)** — UEs report L1-RSRP (signal strength) per SSB beam index. The gNB gets beam quality, NOT phase correction. This is specified in TS 38.331 and TS 38.321.
+
+2. **PM Counters (TS 28.552)** — Aggregated metrics:
+   - `Number of SSB beam switches` (section 5.1.1.21)
+   - `Number of UEs per SSB beam index` (section 5.1.1.28)
+   - `DL data transmission time per SSB` (section 5.1.1.28.2)
+   - `SS-SINR distribution per SSB` (section 5.1.1.32.2)
+   - All are **15-minute aggregates**, not continuous samples
+
+3. **gNB Trace / MDT** — 3GPP TS 37.320 defines trace capabilities, but these focus on RRC signaling and UE measurements, not internal DSP beamforming weights.
+
+4. **External test equipment** — Rohde & Schwarz RTP/NRQ6 and Keysight VSE can measure MIMO phase externally via RF signal analysis (see R&S app note GFM343). This requires a signal analyzer connected to the antenna port — defeats the zero-hardware claim.
+
+**Conclusion:** The whitepaper's core data assumption — that the BBU's internal phase correction (Δθ) is accessible at 10-100ms resolution — is **not supported by available vendor documentation**. The data exists inside the AAU's DSP but is not surfaced through any standard export mechanism.
+
+**For the SSB Observer to work, one of these would be needed:**
+- Vendor firmware update to expose beamforming weights as a PM counter or OID
+- External RF phase measurement equipment per tower (defeats zero-hardware)
+- Alternative approach using UE-reported L1-RSRP per beam (available, but measures signal strength, not phase/angle)
+
+### 2.6 Data Flow Diagram (Revised)
 
 ```
 BBU/AAU (every 10-100ms)
@@ -204,9 +236,15 @@ BBU/AAU (every 10-100ms)
 
 ## Part 3: Key Implications for SSB Observer
 
-1. **Data exists and is accessible** — operators are legally required to collect and retain BBU PM data
-2. **Retention periods are sufficient** — 2+ years in most markets means historical comparison and baseline calibration are feasible
-3. **No new regulatory burden** — the observer is read-only; operators are already compliant
-4. **Raw phase correction is the target** — standard PM XML files contain aggregated counters, not the sub-100ms raw Δθ samples. For real-time monitoring, SNMP OID polling of the BBU's internal phase lock loop is required. Standard 15-min PM exports are **too coarse** for the observer's frequency-domain analysis (fft_n, damping, vortex shedding).
-5. **Access gap is real** — the raw Δθ data exists in hardware at full resolution but is not exposed by default. A pilot requires the operator to enable vendor-specific SNMP OIDs or BBU debug traces. This is a configuration change, not a hardware install.
-6. **The free-data claim is partially validated** — regulators mandate PM collection, but at the aggregated level. The raw beamforming weights the observer needs are a side-channel data source requiring vendor API cooperation, not a regulatory mandate.
+1. **Standard PM data is available but wrong granularity** — operators legally collect 15-min aggregated counters (beam switches, UE counts, SINR). These are **too coarse** for the observer's frequency-domain analysis (natural frequency tracking, damping, vortex shedding).
+
+2. **Raw Δθ may not exist as accessible data** — extensive vendor research found **no evidence** that any BBU vendor exposes raw beamforming phase correction values at 10-100ms resolution through any standard interface (SNMP, PM XML, REST API). The whitepaper's core data assumption is unverified.
+
+3. **UE-reported beam metrics are the closest available signal** — L1-RSRP per SSB beam index is real data that operators already collect. It measures signal strength per beam direction, not phase correction. Whether RSRP-per-beam correlates sufficiently with structural tilt is an open question requiring field validation.
+
+4. **The zero-hardware claim is at risk** — without accessible Δθ data, the observer may require:
+   - Vendor firmware changes (not zero-hardware, requires vendor partnership)
+   - External RF measurement equipment (defeats the purpose)
+   - A different algorithmic approach using existing UE RSRP reports
+
+5. **The pilot's primary goal must change** — instead of "validate the observer against real Δθ data", the first pilot should be: **"determine what data the BBU actually exposes and whether any of it correlates with structural tilt."**
