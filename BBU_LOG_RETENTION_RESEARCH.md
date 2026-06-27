@@ -149,6 +149,26 @@ measCollecFile
 
 **Note:** While these are the standardised counters, the **raw phase correction values** (Δθ) that the SSB Observer uses are BBU-internal beamforming weights, not aggregated PM counters. They exist in the BBU's internal phase lock loop logs and are exposed via vendor-specific SNMP OIDs or debug interfaces — not the standard PM XML files. The PM counters above are derived/aggregated metrics; the observer needs the raw per-sample values.
 
+### 2.4.1 Precision & Resolution Gap
+
+There are **two tiers of data** with very different resolution:
+
+| Channel | Sample Interval | Resolution | Suitable for Observer? |
+|---|---|---|---|
+| **OSS PM XML** (standard) | 15 min / 1 hr | Aggregated counts | ❌ Too coarse |
+| **BBU internal phase lock loop** | **10–100 ms** | **~0.01–0.02°** | ✅ Full resolution |
+
+**Issue:** The raw sub-100ms Δθ samples are DSP-level beamforming weights internal to the AAU/BBU. They are:
+- **Not exposed** in standard 3GPP PM XML exports
+- **Not mandated** by regulators (who only require aggregated PM counters)
+- **Accessible only** via vendor-specific SNMP OIDs, gNB trace (MDT/MLB per 3GPP TS 37.320), or BBU debug interfaces
+
+**What this means for the SSB Observer:**
+- The *capability* exists in hardware — every AAU computes phase corrections at 10-100ms with 0.01° resolution
+- The *access* depends on vendor API support, not regulatory mandate
+- Standard OSS PM feeds (15-min aggregates) are **insufficient** — the observer must tap into the real-time BBU data path
+- A pilot would need the operator to enable the relevant SNMP OID or provide BBU debug trace access, not just standard PM exports
+
 ### 2.5 Data Access Methods
 
 | Method | Detail | Best for |
@@ -187,5 +207,6 @@ BBU/AAU (every 10-100ms)
 1. **Data exists and is accessible** — operators are legally required to collect and retain BBU PM data
 2. **Retention periods are sufficient** — 2+ years in most markets means historical comparison and baseline calibration are feasible
 3. **No new regulatory burden** — the observer is read-only; operators are already compliant
-4. **Raw phase correction is the target** — standard PM XML files contain aggregated counters, not the sub-100ms raw Δθ samples. For real-time monitoring, SNMP OID polling is the right approach. For historical validation, some operators may log raw phase data in debug buffers.
-5. **The observer's free-data claim is validated** — regulators mandate the collection; the data costs zero additional dollars per tower
+4. **Raw phase correction is the target** — standard PM XML files contain aggregated counters, not the sub-100ms raw Δθ samples. For real-time monitoring, SNMP OID polling of the BBU's internal phase lock loop is required. Standard 15-min PM exports are **too coarse** for the observer's frequency-domain analysis (fft_n, damping, vortex shedding).
+5. **Access gap is real** — the raw Δθ data exists in hardware at full resolution but is not exposed by default. A pilot requires the operator to enable vendor-specific SNMP OIDs or BBU debug traces. This is a configuration change, not a hardware install.
+6. **The free-data claim is partially validated** — regulators mandate PM collection, but at the aggregated level. The raw beamforming weights the observer needs are a side-channel data source requiring vendor API cooperation, not a regulatory mandate.
