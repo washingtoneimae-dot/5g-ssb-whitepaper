@@ -1,34 +1,72 @@
-# 5G SSB Phase-Shift Observer — Whitepaper
+# Open-Source Fiber Optics Research
 
-**Zero-hardware structural health monitoring for telecom towers.**
+Independent research into telecom and fiber optic problems. Two projects in this repo:
 
-This repository contains the whitepaper for a method that extracts cumulative structural maintenance debt from existing 5G BBU (Baseband Unit) phase correction logs — requiring **zero additional sensors, hardware installations, or tower climbs.**
+---
 
-Every 5G massive MIMO antenna already logs SSB (Synchronization Signal Block) phase corrections at sub-second resolution to maintain beam alignment. When a tower deforms — from wind, thermal expansion, or permanent structural creep — the BBU compensates. Those corrections encode the tower's mechanical state.
+## 1. HCF-to-SMF Adapter — GRIN MMF Mode Converter
 
-## Key Claims
+A **$0.50 passive adapter** for connecting hollow-core fiber (HCF) to standard
+single-mode fiber (SMF-28), using **572 μm of standard OM4 GRIN MMF** as a
+multi-mode interference (MMI) mode converter.
 
-- **Resolution:** ~0.02° (vs ~0.5° for visual inspection)
-- **Frequency:** Sub-second, 24/7 (vs every 3-5 years for manual inspection)
-- **Cost:** $0 per tower (uses existing BBU logs — no hardware to install)
-- **Lead time:** Detects deformation 4-6 months before it's visually apparent
+### Performance (simulated)
 
-## Prior Art
+| Metric | Value |
+|---|---|
+| MMI coupling (analytic 5-mode) | **0.003 dB** |
+| Median total IL (MC, 2000 samples) | **0.10 dB** |
+| 95th percentile total IL | **0.28 dB** |
+| Yield at <0.5 dB | **100%** |
+| Optimal length | 572 μm (L/2 half-pitch) |
+| BOM | **$0.38–0.81** |
 
-This whitepaper and its conception document are timestamped on Bitcoin Testnet:
+### Status
 
-| Document | TXID |
-|----------|------|
-| Conception & architecture | `64f0bb98e5a90084ee4f6523fc1d96cee0634811bb08c83cfe52f2a532b05002` |
-| This whitepaper | `3ed6dc22bd669c04620490f29e0b50adf8332e009f5e5e2786e3cc1a42048b0c` |
+**Prior art exists** (see [PRIOR_ART.md](PRIOR_ART.md)). The concept is fully
+anticipated by:
+- University of Southampton ORC group — experimental 0.074 dB loss since 2021
+- Microsoft/Lumenisity — granted patent US12517303B2 (priority 2018)
 
-Verify: `https://blockstream.info/testnet/tx/3ed6dc22bd669c04620490f29e0b50adf8332e009f5e5e2786e3cc1a42048b0c`
+This repo provides the **cleanest public derivation** of the MMI physics, a
+full tolerance analysis, Monte Carlo simulation, and cost model — released as
+open source.
 
-## Full Demo
+### Files
 
-The complete interactive demo (Streamlit app with tower visualization, debt gauge, live simulation, and engineering lab mode) is in the [5g-ssb-demo](https://github.com/washingtoneimae-dot/5g-ssb-demo) repository.
+- [`HCF_ADAPTER_PHYSICS.md`](HCF_ADAPTER_PHYSICS.md) — Full physics derivation
+- [`HCF_ADAPTER_HYPOTHESIS.md`](HCF_ADAPTER_HYPOTHESIS.md) — Hypothesis statement
+- [`simulate_adapter.py`](simulate_adapter.py) — Numerical eigenvalue solver
+- [`fast_sweeps.py`](fast_sweeps.py) — Vectorized analytic sweeps + MC
+- [`PRIOR_ART.md`](PRIOR_ART.md) — Prior art documentation
+- [`simulation/`](simulation/) — Diagnostic plots and results
+
+---
+
+## 2. 5G SSB Phase-Shift Observer (Archived)
+
+A zero-hardware structural health monitoring concept for telecom towers using
+existing 5G BBU phase correction logs.
+
+**Status: Abandoned** — raw beam phase correction data is not exportable via
+any standard BBU interface. See [`ACQUISITION_PATHWAY.md`](ACQUISITION_PATHWAY.md)
+for the analysis.
+
+### Archived Files
+
+- [`5G_SSB_Phase-Shift_Observer.md`](5G_SSB_Phase-Shift_Observer.md) — Original whitepaper
+- [`ACQUISITION_PATHWAY.md`](ACQUISITION_PATHWAY.md) — Data acquisition analysis
+- [`BBU_LOG_RETENTION_RESEARCH.md`](BBU_LOG_RETENTION_RESEARCH.md) — BBU log research
+- [`FEMTOSECOND_LASER_WAVEGUIDE_RESEARCH.md`](FEMTOSECOND_LASER_WAVEGUIDE_RESEARCH.md)
+- [`INVESTOR_THESIS.md`](INVESTOR_THESIS.md)
+
+---
 
 ## Author
 
 **Washington Imae** — [github.com/washingtoneimae-dot](https://github.com/washingtoneimae-dot)
 GPG: `7989 D2E2 1C9D 29E6 5742 2BCA 2B88 E816 5712 F528`
+
+## License
+
+MIT — see [LICENSE](LICENSE)
