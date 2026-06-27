@@ -75,7 +75,7 @@ analysis — not a novel invention.
 ## Implications
 
 - **Not patentable** — fully anticipated by Microsoft's granted patent
-  (US12517303B3, priority 2018) and Southampton's publications since 2021
+  (US12517303B2, priority 2018) and Southampton's publications since 2021
 - **Scientifically correct** — our independent derivation reaches the same
   conclusions as published experimental results (0.074–0.15 dB loss)
 - **Open-source value** — this repo provides the cleanest public derivation of
