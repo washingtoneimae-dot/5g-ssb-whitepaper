@@ -1,6 +1,7 @@
-# Open-Source Fiber Optics Research
+# Open-Source Research
 
-Independent research into telecom and fiber optic problems. Two projects in this repo:
+Independent research into telecom, fiber optic, and patent problems.
+
 
 ---
 
@@ -60,6 +61,26 @@ for the analysis.
 - [`BBU_LOG_RETENTION_RESEARCH.md`](BBU_LOG_RETENTION_RESEARCH.md) — BBU log research
 - [`FEMTOSECOND_LASER_WAVEGUIDE_RESEARCH.md`](FEMTOSECOND_LASER_WAVEGUIDE_RESEARCH.md)
 - [`INVESTOR_THESIS.md`](INVESTOR_THESIS.md)
+
+---
+
+## 3. Patent Hunting — Design-Around & Invalidity Analysis
+
+Analyzing patents that big companies use to block smaller competition, and
+publishing prior art, invalidity arguments, and design-around strategies.
+
+### Current Targets
+
+| Target | Status | Files |
+|--------|--------|-------|
+| Microsoft US12517303B2 (HCF adapter) | Prior art found, invalidity mapped | [`PATENT_DESIGN_AROUND_STRATEGY.md`](PATENT_DESIGN_AROUND_STRATEGY.md), [`PRIOR_ART.md`](PRIOR_ART.md) |
+| Dolby AV1 (royalty-free subversion) | Survey complete, analysis pending | [`dolby/AV1.md`](dolby/AV1.md) |
+| Dolby Opus (royalty-free audio codec) | Survey complete, analysis pending | [`dolby/OPUS.md`](dolby/OPUS.md) |
+
+### Methodology
+
+[`PATENT_HUNTING_PROCESS.md`](PATENT_HUNTING_PROCESS.md) — Systematic workflow
+for finding, analyzing, and publishing patent design-arounds.
 
 ---
 
